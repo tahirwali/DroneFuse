@@ -58,9 +58,14 @@ def _cpu_block(cpu, key, n, dim):
     return cpu[key].astype(np.float32).reshape(n, -1) if key in cpu.files else np.zeros((n, dim), np.float32)
 
 
-def load_step2(step2_dir, windows):
-    """All covered windows of every recording that has both Step 2 files."""
+def load_step2(step2_dir, windows, camera="full", crop_dir=None):
+    """All covered windows of every recording that has both Step 2 files.
+    camera="crop" uses the drone-centred crops of Step 2b (<recording>.crop.npz in `crop_dir`) instead of
+    the whole-frame embeddings; recordings without a crop file are skipped."""
     step2_dir = Path(step2_dir)
+    crop_dir = Path(crop_dir) if crop_dir else step2_dir
+    if camera not in ("full", "crop"):
+        raise ValueError(f"camera must be 'full' or 'crop', not {camera!r}")
     row_of = {w["window_id"]: w for w in windows}
     parts, skipped = [], {}
     for name in BY_NAME:
@@ -70,6 +75,10 @@ def load_step2(step2_dir, windows):
             continue
         if not deep_path.exists():
             skipped[name] = "no Step 2 GPU file"
+            continue
+        crop_path = crop_dir / f"{name}.crop.npz"
+        if camera == "crop" and not crop_path.exists():
+            skipped[name] = "no Step 2b crop file"
             continue
         cpu, deep = np.load(cpu_path), np.load(deep_path)
         ids = np.array([str(i) for i in cpu["window_id"]])
@@ -81,7 +90,14 @@ def load_step2(step2_dir, windows):
         avail = cpu["availability"]
         counts = np.stack([avail[:, names.index(COUNT_COLUMN[s])] for s in SENSORS], 1).astype(np.int64)
         x = {}
-        if "camera_avg" in deep.files:
+        if camera == "crop":
+            crop = np.load(crop_path)
+            if not np.array_equal(ids, np.array([str(i) for i in crop["window_id"]])):
+                skipped[name] = "crop windows differ"
+                continue
+            peak = np.log1p(np.clip(crop["camera_crop_peak"].astype(np.float32), 0, None))[:, None]
+            x["camera"] = np.concatenate([crop["camera_crop_avg"], crop["camera_crop_max"], peak], 1).astype(np.float32)
+        elif "camera_avg" in deep.files:
             x["camera"] = np.concatenate([deep["camera_avg"], deep["camera_max"]], 1).astype(np.float32)
         else:
             x["camera"] = np.zeros((n, 1536), np.float32)

@@ -21,7 +21,7 @@ from .fusion import (FUSED, GROUP_NAMES, METHODS, THRESHOLD_CANDIDATES, TrainSet
                      presence, single_logits, subset_mask, train, _predict_class)
 from .windows import PROTOCOLS
 
-SUBSET_PROTOCOLS = ("closed", "v1_to_v2", "v2_to_v1")
+SUBSET_PROTOCOLS = ("closed", "v1_to_v2", "v2_to_v1", "xrec_s1_to_s2", "xrec_s2_to_s1")
 LABEL = {"single_camera": "Camera only", "single_audio": "Audio only", "single_avia": "Avia only",
          "single_mid360": "Mid-360 only", "single_radar": "Radar only", "late": "Late fusion",
          "concat": "Feature concatenation", "lmmuavc": "LMMUAVC-style", "dronefuse": "DroneFuse",
@@ -33,15 +33,21 @@ def device_name():
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
+def runs_folder(camera="full"):
+    """Runs with whole-frame camera features go to runs/, runs with Step 2b crops to runs_crop/."""
+    return "runs" if camera == "full" else f"runs_{camera}"
+
+
 def resume_from(previous, out_dir, log=print):
     """Copy finished runs of an earlier session (an attached output) into this session's output."""
-    runs = Path(out_dir) / "runs"
-    runs.mkdir(parents=True, exist_ok=True)
     copied = 0
-    for path in Path(previous).rglob("runs/*"):
-        if path.suffix in (".json", ".npz") and not (runs / path.name).exists():
-            shutil.copy2(path, runs / path.name)
-            copied += 1
+    for name in ("runs", "runs_crop"):
+        runs = Path(out_dir) / name
+        for path in Path(previous).rglob(f"{name}/*"):
+            if path.suffix in (".json", ".npz") and not (runs / path.name).exists():
+                runs.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, runs / path.name)
+                copied += 1
     log(f"resumed {copied} files from {previous}")
     return copied
 
@@ -68,10 +74,10 @@ def choose_threshold(data, task, seed, settings, device, runs, log):
 
 
 def run_protocol(data, windows, protocol, seeds, out_dir, settings=None, device=None, log=print,
-                 methods=METHODS):
+                 methods=METHODS, camera="full"):
     settings = settings or TrainSettings()
     device = device or device_name()
-    runs = Path(out_dir) / "runs"
+    runs = Path(out_dir) / runs_folder(camera)
     runs.mkdir(parents=True, exist_ok=True)
     task = make_task(data, windows, protocol)
     log(f"{protocol}: known {task.known}, unknown {task.unknown}, train {len(task.train)}, val {len(task.val)}, "
@@ -142,9 +148,9 @@ def _mean_std(values):
     return (float(np.mean(v)), float(np.std(v)), len(v)) if v else (None, None, 0)
 
 
-def summarize(data, windows, out_dir, protocols=PROTOCOLS, seeds=(0, 1, 2)):
+def summarize(data, windows, out_dir, protocols=PROTOCOLS, seeds=(0, 1, 2), camera="full"):
     """Read every run on disk and compute the summary tables (means and standard deviations over seeds)."""
-    runs = Path(out_dir) / "runs"
+    runs = Path(out_dir) / runs_folder(camera)
     table, groups_table, subsets, perturb, thresholds = {}, {}, {}, {}, {}
     for protocol in protocols:
         th_path = runs / f"{protocol}_threshold.json"
@@ -292,6 +298,23 @@ def write_tables(summary, folder):
         lines.append(f"{LABEL[method]} & " + " & ".join(cells) + r" \\")
     lines += [r"\bottomrule", r"\end{tabular}"]
     (folder / "tab_main.tex").write_text("\n".join(lines))
+
+    xrec = [p for p in ("xrec_s1_to_s2", "xrec_s2_to_s1") if p in main]
+    if xrec:
+        heads = {"xrec_s1_to_s2": r"Flight 1$\rightarrow$2", "xrec_s2_to_s1": r"Flight 2$\rightarrow$1"}
+        lines = [r"\begin{tabular}{l" + "ccc" * len(xrec) + "}", r"\toprule",
+                 " & " + " & ".join(r"\multicolumn{3}{c}{" + heads[p] + "}" for p in xrec) + r" \\",
+                 "Method" + " & Acc. & AUROC & FPR@95" * len(xrec) + r" \\", r"\midrule"]
+        for method in METHODS:
+            cells = []
+            for p in xrec:
+                r = main[p].get(method)
+                cells += ([_pct(r["known_accuracy"]), _pct(r["avail_energy_auroc"]),
+                           _pct(r["avail_energy_fpr_at_95_tpr"])] if r else ["--"] * 3)
+            if any(c != "--" for c in cells):
+                lines.append(f"{LABEL[method]} & " + " & ".join(cells) + r" \\")
+        lines += [r"\bottomrule", r"\end{tabular}"]
+        (folder / "tab_xrec.tex").write_text("\n".join(lines))
 
     open_protocols = [p for p in main if p != "closed"]
     lines = [r"\begin{tabular}{lccc}", r"\toprule", r"Method & MSP & Energy & Availability-normalised energy \\",

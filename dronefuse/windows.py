@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .recordings import DRONE_TYPES, RECORDINGS
+from .recordings import BY_NAME, DRONE_TYPES, RECORDINGS
 
 WINDOW_S = 1.0
 HOP_S = 0.5
@@ -77,7 +77,12 @@ def load_windows(path):
     return rows
 
 
-PROTOCOLS = ["closed", "v1_to_v2", "v2_to_v1"] + [f"loo_{t}" for t in DRONE_TYPES]
+PROTOCOLS = ["closed", "v1_to_v2", "v2_to_v1"] + [f"loo_{t}" for t in DRONE_TYPES] + ["xrec_s1_to_s2", "xrec_s2_to_s1"]
+
+# Car-park types flown twice. The cross-recording protocols train on one flight of each and test on the
+# other, so a model can't score by recognising the recording. The Mavic 3E (one flight only) is the unknown.
+FLIGHTS = {"s1": ["V2_m300s1", "V2_m30s1", "V2_p4s1"], "s2": ["V2_m300s2", "V2_m30s2", "V2_p4s2"]}
+XREC_UNKNOWN = "V2_m3e"
 
 
 def protocol_sets(rows, protocol):
@@ -101,6 +106,13 @@ def protocol_sets(rows, protocol):
         train = [r for r in rows if r["split"] == "train" and r["drone_type"] != held_out]
         val = [r for r in rows if r["split"] == "val" and r["drone_type"] != held_out]
         test = [r for r in rows if r["split"] == "test"]
+    elif protocol in ("xrec_s1_to_s2", "xrec_s2_to_s1"):
+        source, target = ("s1", "s2") if protocol == "xrec_s1_to_s2" else ("s2", "s1")
+        known = sorted({BY_NAME[name].drone_type for name in FLIGHTS[source]})
+        train = [r for r in rows if r["recording"] in FLIGHTS[source] and r["split"] == "train"]
+        val = [r for r in rows if r["recording"] in FLIGHTS[source] and r["split"] == "val"]
+        test = ([r for r in rows if r["recording"] in FLIGHTS[target]]
+                + [r for r in rows if r["recording"] == XREC_UNKNOWN and r["split"] == "test"])
     else:
         raise ValueError(f"unknown protocol {protocol!r}")
     unknown = sorted({r["drone_type"] for r in test} - set(known))

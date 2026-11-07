@@ -26,6 +26,12 @@ of different splits are always at least 2 s apart.
 | `loo_Mavic2` | 5 other types | test blocks | Mavic2 | 4226 | 1384 | 1395 | 88 |
 | `loo_Mavic3` | 5 other types | test blocks | Mavic3 | 3333 | 1089 | 1098 | 385 |
 | `loo_Phantom4` | 5 other types | test blocks | Phantom4 | 3393 | 1109 | 1124 | 359 |
+| `xrec_s1_to_s2` | car park, flight 1 of M300, M30, Phantom 4 | **all** windows of flight 2, + `m3e` test blocks | Mavic3 | 1096 | 358 | 1861 | 321 |
+| `xrec_s2_to_s1` | car park, flight 2 of M300, M30, Phantom 4 | **all** windows of flight 1, + `m3e` test blocks | Mavic3 | 1126 | 365 | 1817 | 321 |
 
 Class = drone type; Mavic 3 (V1) and Mavic 3 Enterprise (V2/V3 `m3e`) are one class, `Mavic3`.
 Validation never contains an unknown type, so rejection thresholds are set without seeing unknowns.
+
+The cross-recording protocols (`xrec_*`, added 2026-11-07) test on flights never seen in training, for known and
+unknown types alike, so a model cannot score by recognising the recording (in `closed` and `loo_*`, training
+and test windows of a known type come from the same flight).

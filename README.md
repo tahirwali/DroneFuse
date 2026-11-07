@@ -19,6 +19,7 @@ fit in a few hours on a T4.
 | 0 | `step0_mmaud_probe.ipynb` | Reads the bag indexes on the Hugging Face Hub: topics, rates, formats, download speed | CPU |
 | 1 | `step1_extract_{v1,v2a,v2b}.ipynb` | Streams all 12 recordings (~373 GB of bags) and keeps a compact 8.5 GB copy of every sensor | CPU |
 | 2 | `step2_features.ipynb` | Per-window sensor availability, point-cloud and audio descriptors, frozen ConvNeXt-T and AST embeddings | GPU |
+| 2b | `step2b_camera_crops.ipynb` | Finds the drone in each camera frame without labels and embeds a small crop around it, so the camera can't recognise the recording from the sky | GPU |
 | 3 | `step3_fusion.ipynb` | Trains every method on every protocol (3 seeds), unknown-drone rejection, sensor-removal tests, paper tables and figures | GPU |
 
 The `docs/` folder explains each step in more detail.
@@ -32,6 +33,7 @@ split. The fixed windows and protocols are in `splits/`:
 - `closed`: all six drone types known
 - `v1_to_v2` and `v2_to_v1`: train at one site, test at the other
 - `loo_<type>`: leave one drone type out and treat it as unknown
+- `xrec_s1_to_s2` and `xrec_s2_to_s1`: train on one car-park flight per type and test on the other flight
 
 ## Methods compared
 

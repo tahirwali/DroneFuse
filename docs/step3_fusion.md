@@ -2,7 +2,8 @@
 
 ## What
 One GPU notebook (`notebooks/step3_fusion.ipynb`) reads the Step 2 dataset `dronefuse-step2-features` and runs
-11 methods × 9 protocols × 3 seeds. Every run is saved as soon as it ends (`runs/`, logits included), so new
+11 methods × 11 protocols × 3 seeds, and everything a second time with the drone-centred
+camera crops of Step 2b (`runs_crop/`) when they are attached. Every run is saved as soon as it ends (`runs/`, logits included), so new
 analyses need no retraining and an interrupted run can be continued.
 
 | Method | Idea |
@@ -39,7 +40,7 @@ present, test-time removal), `figures/*.png` (subset grids, accuracy vs. groups 
   DroneFuse: CLS token + 2 pre-norm transformer layers (4 heads), key-padding mask for missing sensors.
 - Training: AdamW (lr 1e-3, wd 1e-2), one-cycle schedule, 40 epochs, batch 256, class-weighted cross-entropy,
   best epoch by validation accuracy.
-- Test-time removal (closed and both cross-site protocols): all 31 subsets of the 5 groups; extra i.i.d.
+- Test-time removal (closed, both cross-site and both cross-recording protocols): all 31 subsets of the 5 groups; extra i.i.d.
   removal (p = 0.3) and pattern removal (transplanted from other test windows, p = 0.5).
 
 ## Verified locally (2026-11-07)

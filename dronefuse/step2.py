@@ -103,14 +103,20 @@ BLOCKS = {
     "audio log-mel stats": ("cpu", "audio_stats"),
     "audio AST": ("deep", "audio_ast"),
 }
+CROP_BLOCKS = {
+    "camera crop (avg pool)": ("crop", "camera_crop_avg"),
+    "camera crop (max pool)": ("crop", "camera_crop_max"),
+}
+SUFFIX = {"cpu": ".npz", "deep": ".deep.npz", "crop": ".crop.npz"}
 
 
-def load_block(out_dir, names, block):
+def load_block(out_dir, names, block, crop_dir=None):
     """X (rows of all recordings in `names`, window order) and window ids for one block."""
-    kind, key = BLOCKS[block]
+    kind, key = {**BLOCKS, **CROP_BLOCKS}[block]
     xs, ids = [], []
     for name in names:
-        path = Path(out_dir) / (f"{name}.npz" if kind == "cpu" else f"{name}.deep.npz")
+        folder = Path(crop_dir) if kind == "crop" and crop_dir else Path(out_dir)
+        path = folder / f"{name}{SUFFIX[kind]}"
         if not path.exists():
             return None, None
         data = np.load(path)
@@ -122,7 +128,7 @@ def load_block(out_dir, names, block):
     return np.concatenate(xs), ids
 
 
-def linear_probe(out_dir, windows, names, log=print):
+def linear_probe(out_dir, windows, names, log=print, crop_dir=None):
     """Closed protocol: train on train windows, accuracy on val windows, one block at a time."""
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import balanced_accuracy_score
@@ -134,8 +140,8 @@ def linear_probe(out_dir, windows, names, log=print):
     split_of = {w["window_id"]: s for s in ("train", "val") for w in sets[s]}
     label_of = {w["window_id"]: DRONE_TYPES.index(w["drone_type"]) for w in windows}
     results = {}
-    for block in BLOCKS:
-        x, ids = load_block(out_dir, names, block)
+    for block in list(BLOCKS) + (list(CROP_BLOCKS) if crop_dir else []):
+        x, ids = load_block(out_dir, names, block, crop_dir)
         if x is None:
             results[block] = None
             continue
@@ -188,3 +194,58 @@ def format_step2_report(cpu_results, deep_results, probe, environment=None):
             lines.append(f"  {block:22s} acc {r['val_accuracy']:.3f}  balanced {r['val_balanced_accuracy']:.3f}  "
                          f"dim {r['dim']}  ({r['train_windows']} train / {r['val_windows']} val)")
     return "\n".join(lines)
+
+
+def recording_probe(out_dir, windows, names, crop_dir=None, log=print):
+    """
+    How well each sensor block tells two flights of the same drone type apart (car park, where M300, M30
+    and Phantom 4 were each flown twice). Logistic regression on the train windows, balanced accuracy on
+    the val windows, averaged over the three types; chance is 0.5. Test windows are not used.
+    """
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import balanced_accuracy_score
+    from .windows import FLIGHTS
+    pairs = [(a, b) for a, b in zip(FLIGHTS["s1"], FLIGHTS["s2"]) if a in names and b in names]
+    split_of = {w["window_id"]: w["split"] for w in windows}
+    covered = {}
+    for name in {n for pair in pairs for n in pair}:
+        cpu = np.load(Path(out_dir) / f"{name}.npz")
+        covered.update(zip((str(i) for i in cpu["window_id"]), cpu["covered"]))
+    blocks = list(BLOCKS) + (list(CROP_BLOCKS) if crop_dir else [])
+    results = {}
+    for block in blocks:
+        scores = []
+        for pair in pairs:
+            x, ids = load_block(out_dir, list(pair), block, crop_dir)
+            if x is None:
+                break
+            rec_of = {w["window_id"]: w["recording"] for w in windows}
+            y = np.array([pair.index(rec_of[i]) for i in ids])
+            keep = np.array([covered.get(i, False) for i in ids])
+            split = np.array([split_of.get(i, "") for i in ids])
+            tr, va = keep & (split == "train"), keep & (split == "val")
+            mu, sd = x[tr].mean(0), x[tr].std(0) + 1e-6
+            model = LogisticRegression(max_iter=2000, C=1.0).fit((x[tr] - mu) / sd, y[tr])
+            scores.append(balanced_accuracy_score(y[va], model.predict((x[va] - mu) / sd)))
+        if len(scores) == len(pairs) and scores:
+            results[block] = {"balanced_accuracy": round(float(np.mean(scores)), 4),
+                              "per_type": [round(float(v), 4) for v in scores]}
+            log(f"  {block:24s} tells the two flights apart: {results[block]['balanced_accuracy']:.3f}")
+        else:
+            results[block] = None
+    return results
+
+
+def crop_features(recordings, step2_dir, out_dir, runner=None, log=print):
+    """Step 2b: drone-centred camera crops for every recording that has Step 2 CPU features."""
+    from .crops import recording_crops
+    results = {}
+    for name, folder in recordings.items():
+        if not (Path(step2_dir) / f"{name}.npz").exists():
+            results[name] = {"error": "no Step 2 features"}
+            continue
+        if runner is None:
+            results[name] = recording_crops(name, folder, step2_dir, out_dir, log=log)
+        else:
+            results[name] = runner.run(f"crops {name}", recording_crops, name, folder, step2_dir, out_dir)
+    return results

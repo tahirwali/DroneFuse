@@ -711,6 +711,34 @@
    "val": 1109,
    "test_known": 1124,
    "test_unknown": 359
+  },
+  "xrec_s1_to_s2": {
+   "known": [
+    "M30",
+    "M300",
+    "Phantom4"
+   ],
+   "unknown": [
+    "Mavic3"
+   ],
+   "train": 1096,
+   "val": 358,
+   "test_known": 1861,
+   "test_unknown": 321
+  },
+  "xrec_s2_to_s1": {
+   "known": [
+    "M30",
+    "M300",
+    "Phantom4"
+   ],
+   "unknown": [
+    "Mavic3"
+   ],
+   "train": 1126,
+   "val": 365,
+   "test_known": 1817,
+   "test_unknown": 321
   }
  }
 }
