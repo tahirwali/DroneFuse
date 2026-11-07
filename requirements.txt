@@ -1,0 +1,17 @@
+# Kaggle already provides torch, numpy, pandas, pillow, matplotlib, scipy, soundfile, requests, huggingface_hub.
+# The notebooks install rosbags (Step 0) and indexed_bzip2 (Step 1, optional) only if they are missing.
+torch
+numpy
+pandas
+pillow
+matplotlib
+scipy
+soundfile
+requests
+huggingface_hub
+rosbags
+indexed_bzip2   # optional: used only if faster than the bz2 module on the same bytes
+scikit-learn    # Step 2 linear probe
+timm            # Step 2 camera backbone (Kaggle has it)
+transformers    # Step 2 audio model (Kaggle has it)
+pytest

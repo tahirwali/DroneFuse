@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
+outputs/
+dronefuse_outputs/
+*.pt
+*.ckpt
+*.zip
+*.bag
+
+# kept local: unpublished manuscript and internal working notes
+paper/
+docs/PROGRESS_LOG.md
+docs/WORKPLAN.md
