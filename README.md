@@ -22,6 +22,7 @@ fit in a few hours on a T4.
 | 2b | `step2b_camera_crops.ipynb` | Finds the drone in each camera frame without labels and embeds a small crop around it, so the camera can't recognise the recording from the sky | GPU |
 | 3 | `step3_fusion.ipynb` | Trains every method on every protocol (3 seeds), unknown-drone rejection, sensor-removal tests, paper tables and figures | GPU |
 | T1 | `t1_tsms_import.ipynb` | Imports the second dataset, TSMS-Drone (FMCW radar, CW radar, RF receiver), straight from figshare into Kaggle and keeps its processed images | CPU |
+| T2 | `t2_dronerfcmm_import.ipynb` | Imports the third dataset, DroneRFc-MM (PTZ and fisheye camera, RF, LiDAR, mmWave radar, microphones), from Science Data Bank into Kaggle in parts of at most 15 GB | CPU |
 
 The `docs/` folder explains each step in more detail.
 
