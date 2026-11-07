@@ -27,7 +27,8 @@ We do two things about it:
   clearly the camera sees a drone.
 - The filters run on the GPU with max-pooling; CPU workers only decode JPEGs.
 - Step 3 runs everything a second time with `camera="crop"`; runs go to `runs_crop/`, tables to
-  `tables_crop/`.
+  `tables_crop/`. In that variant the camera is **present only where the drone was seen** (peak >= 20,
+  `crops.DETECTED_PEAK`); other windows get no camera input, so crops of empty sky never reach the model.
 
 ## Checked locally (2026-11-07) on real frames from the Hub
 - V2_p4s1 (car park, overcast): frames from 12 short segments. Windows with the drone in view have peaks
@@ -44,3 +45,13 @@ We do two things about it:
 A hovering drone is partly suppressed by the motion check. A drone in front of a building, outside the sky
 mask, is not searched for. Windows where the drone is not visible still get a crop (of sky), with a low
 peak value.
+
+## Result of the Kaggle run (2026-11-07)
+- Contact sheets: when the drone is in view the crop is centred on it (peak ~45-200; faint drones on overcast sky 12-18).
+  Otherwise the crop is empty sky (peak 4-10). Median peak is 4-8 in every recording, so the drone is seen in a minority of windows
+  (V1_Mavic2 almost never). Occasional false detections: the lens rim, a building edge, a person's head.
+- Linear probe on drone type (val): whole frame 1.000, crop (avg) 0.736.
+- Recording probe (chance 0.5): whole frame 1.000, crop (avg) 0.892, Mid-360 all 0.948 / foreground 0.894, Avia 0.714,
+  audio log-mel 0.657 / AST 0.581, radar 0.552. The shortcut is real and not only in the camera. Empty-sky crops still
+  carry the day's clouds, hence the threshold above. Step 3 repeats both probes on the "drone seen" windows only
+  (report section SHORTCUT CHECK).

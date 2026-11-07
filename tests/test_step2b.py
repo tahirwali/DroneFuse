@@ -93,6 +93,11 @@ def test_crop_variant_runs_into_its_own_folder(step2_dir, windows, tmp_path):   
                  camera_crop_frame=np.arange(n), camera_crop_xy=np.zeros((n, 2), np.int32))
     data = load_step2(step2_dir, windows, camera="crop")
     assert data.x["camera"].shape[1] == 1537 and not data.skipped
+    # the camera is present only where the drone was seen; elsewhere it carries nothing at all
+    seen = data.counts[:, 0] > 0
+    assert 0 < seen.mean() < 1
+    peak = np.expm1(data.x["camera"][:, -1])
+    assert (peak[seen] >= crops.DETECTED_PEAK - 1e-3).all() and not data.x["camera"][~seen].any()
     task = make_task(data, windows, "xrec_s1_to_s2")
     assert (task.y[task.train] >= 0).all() and (task.y[task.test] < 0).any()
     settings = TrainSettings(epochs=2, batch_size=128)
@@ -115,3 +120,15 @@ def test_check_gpu_stops_without_a_gpu_unless_allowed(monkeypatch, capsys):
         environment.check_gpu()
     assert "NO GPU FOUND" in capsys.readouterr().out
     assert environment.check_gpu(allow_cpu=True) is None
+
+
+def test_drone_seen_blocks_keep_only_detected_windows(tmp_path):
+    from dronefuse.step2 import load_block
+    ids = np.array([f"w{i}" for i in range(6)])
+    np.savez(tmp_path / "R.crop.npz", window_id=ids, camera_crop_avg=np.arange(6 * 768).reshape(6, 768).astype(np.float16),
+             camera_crop_max=np.zeros((6, 768), np.float16),
+             camera_crop_peak=np.array([5, 30, 19.9, 20, 150, 7], np.float32))
+    x, kept = load_block(tmp_path, ["R"], "crop, drone seen (avg)", tmp_path)
+    assert kept == ["w1", "w3", "w4"] and x.shape == (3, 768)
+    x, kept = load_block(tmp_path, ["R"], "camera crop (avg pool)", tmp_path)
+    assert len(kept) == 6

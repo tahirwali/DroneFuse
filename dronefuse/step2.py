@@ -106,13 +106,17 @@ BLOCKS = {
 CROP_BLOCKS = {
     "camera crop (avg pool)": ("crop", "camera_crop_avg"),
     "camera crop (max pool)": ("crop", "camera_crop_max"),
+    "crop, drone seen (avg)": ("crop", "camera_crop_avg", "detected"),
+    "crop, drone seen (max)": ("crop", "camera_crop_max", "detected"),
 }
 SUFFIX = {"cpu": ".npz", "deep": ".deep.npz", "crop": ".crop.npz"}
 
 
 def load_block(out_dir, names, block, crop_dir=None):
-    """X (rows of all recordings in `names`, window order) and window ids for one block."""
-    kind, key = {**BLOCKS, **CROP_BLOCKS}[block]
+    """X (rows of all recordings in `names`, window order) and window ids for one block. The "drone seen"
+    crop blocks keep only the windows where the camera detected the drone (peak >= DETECTED_PEAK)."""
+    from .crops import DETECTED_PEAK
+    kind, key, *only = {**BLOCKS, **CROP_BLOCKS}[block]
     xs, ids = [], []
     for name in names:
         folder = Path(crop_dir) if kind == "crop" and crop_dir else Path(out_dir)
@@ -122,9 +126,10 @@ def load_block(out_dir, names, block, crop_dir=None):
         data = np.load(path)
         if key not in data.files:
             return None, None
-        x = data[key].astype(np.float32)
-        xs.append(x.reshape(len(x), -1))
-        ids += [str(i) for i in data["window_id"]]
+        x = data[key].astype(np.float32).reshape(len(data[key]), -1)
+        rows = np.ones(len(x), bool) if not only else data["camera_crop_peak"] >= DETECTED_PEAK
+        xs.append(x[rows])
+        ids += [str(i) for i, r in zip(data["window_id"], rows) if r]
     return np.concatenate(xs), ids
 
 
@@ -214,7 +219,7 @@ def recording_probe(out_dir, windows, names, crop_dir=None, log=print):
     blocks = list(BLOCKS) + (list(CROP_BLOCKS) if crop_dir else [])
     results = {}
     for block in blocks:
-        scores = []
+        scores, windows_used = [], []
         for pair in pairs:
             x, ids = load_block(out_dir, list(pair), block, crop_dir)
             if x is None:
@@ -224,12 +229,19 @@ def recording_probe(out_dir, windows, names, crop_dir=None, log=print):
             keep = np.array([covered.get(i, False) for i in ids])
             split = np.array([split_of.get(i, "") for i in ids])
             tr, va = keep & (split == "train"), keep & (split == "val")
+            if len(np.unique(y[tr])) < 2 or len(np.unique(y[va])) < 2:
+                scores.append(None)           # too few windows of one flight (e.g. drone rarely seen)
+                windows_used.append(0)
+                continue
             mu, sd = x[tr].mean(0), x[tr].std(0) + 1e-6
             model = LogisticRegression(max_iter=2000, C=1.0).fit((x[tr] - mu) / sd, y[tr])
             scores.append(balanced_accuracy_score(y[va], model.predict((x[va] - mu) / sd)))
-        if len(scores) == len(pairs) and scores:
-            results[block] = {"balanced_accuracy": round(float(np.mean(scores)), 4),
-                              "per_type": [round(float(v), 4) for v in scores]}
+            windows_used.append(int(tr.sum() + va.sum()))
+        valid = [v for v in scores if v is not None]
+        if len(scores) == len(pairs) and valid:
+            results[block] = {"balanced_accuracy": round(float(np.mean(valid)), 4),
+                              "per_type": [None if v is None else round(float(v), 4) for v in scores],
+                              "windows": sum(windows_used)}
             log(f"  {block:24s} tells the two flights apart: {results[block]['balanced_accuracy']:.3f}")
         else:
             results[block] = None

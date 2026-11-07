@@ -3,7 +3,8 @@
 ## What
 One GPU notebook (`notebooks/step3_fusion.ipynb`) reads the Step 2 dataset `dronefuse-step2-features` and runs
 11 methods × 11 protocols × 3 seeds, and everything a second time with the drone-centred
-camera crops of Step 2b (`runs_crop/`) when they are attached. Every run is saved as soon as it ends (`runs/`, logits included), so new
+camera crops of Step 2b (`runs_crop/`) when they are attached; in that variant the camera counts as present only where
+the drone was detected (peak >= 20). Every run is saved as soon as it ends (`runs/`, logits included), so new
 analyses need no retraining and an interrupted run can be continued.
 
 | Method | Idea |

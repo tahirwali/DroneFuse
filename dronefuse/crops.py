@@ -33,6 +33,8 @@ INPUT = 224
 MODEL_FRAMES = 120      # frames used to build the per-recording background model
 SKY_MARGIN = 25         # pixels removed from the edge of the sky mask
 BEST_FRAMES = 3         # frames per window that are embedded
+DETECTED_PEAK = 20      # a window counts as 'drone seen by the camera' from this peak on (set from the contact
+                        # sheets: faint drones on overcast sky reach 12-18, empty sky rarely passes 19)
 
 
 def decode(payload):

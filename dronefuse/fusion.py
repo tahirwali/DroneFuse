@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .crops import DETECTED_PEAK
 from .recordings import BY_NAME, DRONE_TYPES
 from .windows import protocol_sets
 
@@ -61,7 +62,8 @@ def _cpu_block(cpu, key, n, dim):
 def load_step2(step2_dir, windows, camera="full", crop_dir=None):
     """All covered windows of every recording that has both Step 2 files.
     camera="crop" uses the drone-centred crops of Step 2b (<recording>.crop.npz in `crop_dir`) instead of
-    the whole-frame embeddings; recordings without a crop file are skipped."""
+    the whole-frame embeddings, and the camera is present only in windows where the drone was detected
+    (peak >= crops.DETECTED_PEAK); recordings without a crop file are skipped."""
     step2_dir = Path(step2_dir)
     crop_dir = Path(crop_dir) if crop_dir else step2_dir
     if camera not in ("full", "crop"):
@@ -95,8 +97,14 @@ def load_step2(step2_dir, windows, camera="full", crop_dir=None):
             if not np.array_equal(ids, np.array([str(i) for i in crop["window_id"]])):
                 skipped[name] = "crop windows differ"
                 continue
-            peak = np.log1p(np.clip(crop["camera_crop_peak"].astype(np.float32), 0, None))[:, None]
+            raw_peak = crop["camera_crop_peak"].astype(np.float32)
+            peak = np.log1p(np.clip(raw_peak, 0, None))[:, None]
             x["camera"] = np.concatenate([crop["camera_crop_avg"], crop["camera_crop_max"], peak], 1).astype(np.float32)
+            # The camera counts as present only where it sees the drone. Crops of empty sky are dropped, because
+            # the clouds of the day identify the recording (Step 2b recording probe).
+            detected = raw_peak >= DETECTED_PEAK
+            x["camera"][~detected] = 0
+            counts[:, SENSORS.index("camera")] = detected.astype(np.int64)
         elif "camera_avg" in deep.files:
             x["camera"] = np.concatenate([deep["camera_avg"], deep["camera_max"]], 1).astype(np.float32)
         else:
