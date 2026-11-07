@@ -12,6 +12,7 @@ huggingface_hub
 rosbags
 indexed_bzip2   # optional: used only if faster than the bz2 module on the same bytes
 scikit-learn    # Step 2 linear probe
+py7zr           # T1: unpacks the TSMS-Drone 7z archives (the notebook installs it)
 timm            # Step 2 camera backbone (Kaggle has it)
 transformers    # Step 2 audio model (Kaggle has it)
 pytest

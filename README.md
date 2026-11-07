@@ -21,6 +21,7 @@ fit in a few hours on a T4.
 | 2 | `step2_features.ipynb` | Per-window sensor availability, point-cloud and audio descriptors, frozen ConvNeXt-T and AST embeddings | GPU |
 | 2b | `step2b_camera_crops.ipynb` | Finds the drone in each camera frame without labels and embeds a small crop around it, so the camera can't recognise the recording from the sky | GPU |
 | 3 | `step3_fusion.ipynb` | Trains every method on every protocol (3 seeds), unknown-drone rejection, sensor-removal tests, paper tables and figures | GPU |
+| T1 | `t1_tsms_import.ipynb` | Imports the second dataset, TSMS-Drone (FMCW radar, CW radar, RF receiver), straight from figshare into Kaggle and keeps its processed images | CPU |
 
 The `docs/` folder explains each step in more detail.
 
