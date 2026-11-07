@@ -242,3 +242,49 @@ def latex_tables(res, out_dir):
         lines.append(f"{LABEL[a]} $-$ {LABEL[b]} & " + " & ".join(_cell(res["paired"][c][pair]) for c in cols) + r" \\")
     (out_dir / "tab_paired.tex").write_text("\n".join(lines) + "\n")
     (out_dir / "loo_means.json").write_text(json.dumps({k: v["mean"] for k, v in res["loo_auroc"].items()}, indent=1))
+
+
+def plot_within_vs_cross(res, out_path):
+    """Figure: known-type accuracy within recordings (closed) and across recordings (both directions) with
+    95 % intervals, for the whole-frame and the gated camera. Colours from a validated two-slot palette;
+    marker shape repeats the distinction for print and colour-blind readers."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    methods = ["single_camera", "single_audio", "late", "concat", "lmmuavc", "dronefuse"]
+    names = {"single_camera": "Camera only", "single_audio": "Audio only", "late": "Late fusion",
+             "concat": "Concatenation", "lmmuavc": "LMMUAVC-style", "dronefuse": "DroneFuse"}
+    blue, orange, ink, muted = "#2a78d6", "#eb6834", "#2b2b2b", "#8a8a85"
+    plt.rcParams.update({"font.size": 9, "font.family": "serif", "axes.edgecolor": muted,
+                         "axes.labelcolor": ink, "xtick.color": ink, "ytick.color": ink})
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.1), sharey=True)
+    series = [("closed", "Same recordings (time blocks)", blue, "o", 0.0),
+              ("xrec_s1_to_s2", "New flight, direction 1 to 2", orange, "^", 0.22),
+              ("xrec_s2_to_s1", "New flight, direction 2 to 1", orange, "v", -0.22)]
+    for ax, variant, title in zip(axes, ("full", "crop"), ("Whole-frame camera", "Camera used only when it sees the drone")):
+        for k, (prot, label, colour, marker, dy) in enumerate(series):
+            for j, m in enumerate(methods):
+                c = res["accuracy"][f"{variant}/{prot}"][m]
+                y = len(methods) - 1 - j + dy
+                ax.plot([c["low"], c["high"]], [y, y], color=colour, lw=1.2, alpha=0.8, solid_capstyle="round")
+                ax.plot(c["estimate"], y, marker=marker, ms=6, color=colour, mec="white", mew=0.8,
+                        ls="none", label=label if j == 0 else None)
+        ax.axvline(100 / 3, color=muted, lw=0.9, ls=(0, (3, 3)))
+        ax.text(100 / 3 + 1.5, -0.62, "random guessing, new flight", fontsize=7, color=muted,
+                va="center")
+        ax.set_ylim(-0.9, len(methods) - 0.6)
+        ax.set_xlim(0, 100)
+        ax.set_title(title, fontsize=9, color=ink)
+        ax.set_xlabel("Accuracy on known drone types (%)")
+        ax.grid(axis="x", color="#e6e6e3", lw=0.6)
+        ax.set_axisbelow(True)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+    axes[0].set_yticks(range(len(methods)))
+    axes[0].set_yticklabels([names[m] for m in methods][::-1])
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=3, frameon=False, fontsize=8, bbox_to_anchor=(0.5, -0.02))
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
+    fig.savefig(out_path, bbox_inches="tight")
+    fig.savefig(str(out_path).rsplit(".", 1)[0] + ".png", dpi=200, bbox_inches="tight")
+    plt.close(fig)

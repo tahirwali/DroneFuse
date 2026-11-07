@@ -491,3 +491,38 @@ def run_rfcmm(d, n_boot=1000, log=print):
                            kn, n_boot)
         res["leave_one_out"][held] = {m: r[m].get("auroc_msp") for m in r if m != "_windows"}
     return res
+
+
+SENSOR_NAMES = {"FMCW": "FMCW radar", "CW": "CW radar", "RF": "Radio receiver", "ptz": "PTZ camera",
+                "fisheye": "Fisheye camera", "audio": "Microphones", "radar": "mmWave radar",
+                "concat": "Concatenation", "late": "Late fusion"}
+
+
+def latex_more(t3_json, out_dir):
+    """tab_more_probes.tex and tab_more_acc.tex (rows only) from t3_results.json."""
+    res = json.loads(Path(t3_json).read_text())["results"]
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    probes, acc = [], []
+    plan = {"tsms": ("TSMS-Drone", "within", "cross_distance_a_to_b", "cross_distance_b_to_a"),
+            "rfcmm": ("DroneRFc-MM", "within_same_types", "cross_recording_1_to_2", "cross_recording_2_to_1")}
+    for key, (name, w, a, b) in plan.items():
+        r = res.get(key)
+        if not r:
+            continue
+        sensors = sorted(r["probes"])
+        for i, s in enumerate(sensors):
+            p = r["probes"][s]
+            probes.append(f"{name if i == 0 else ''} & {SENSOR_NAMES.get(s, s)} & {p['type']:.1f} & "
+                          f"{p['session']:.1f} \\\\" if p["session"] is not None else
+                          f"{name if i == 0 else ''} & {SENSOR_NAMES.get(s, s)} & {p['type']:.1f} & -- \\\\")
+        for i, m in enumerate(sensors + ["concat", "late"]):
+            cells = []
+            for prot in (w, a, b):
+                c = r["accuracy"][prot][m]
+                cells.append(f"{c['accuracy']:.1f} [{c['ci'][0]:.1f}, {c['ci'][1]:.1f}]")
+            acc.append(f"{name if i == 0 else ''} & {SENSOR_NAMES.get(m, m)} & " + " & ".join(cells) + " \\\\")
+        probes.append(r"\midrule")
+        acc.append(r"\midrule")
+    (out_dir / "tab_more_probes.tex").write_text("\n".join(probes[:-1]) + "\n")
+    (out_dir / "tab_more_acc.tex").write_text("\n".join(acc[:-1]) + "\n")
