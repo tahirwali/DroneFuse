@@ -106,3 +106,12 @@ def test_crop_variant_runs_into_its_own_folder(step2_dir, windows, tmp_path):   
     copied = tmp_path / "copy"
     assert resume_from(tmp_path, copied, log=lambda *a: None) > 0
     assert json.loads((copied / "runs_crop" / "xrec_s1_to_s2_threshold.json").read_text())["chosen"] in (1, 5, 25)
+
+
+def test_check_gpu_stops_without_a_gpu_unless_allowed(monkeypatch, capsys):
+    from dronefuse import environment
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    with pytest.raises(RuntimeError, match="GPU T4"):
+        environment.check_gpu()
+    assert "NO GPU FOUND" in capsys.readouterr().out
+    assert environment.check_gpu(allow_cpu=True) is None

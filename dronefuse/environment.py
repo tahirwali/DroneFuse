@@ -103,3 +103,27 @@ def collect():
         "packages": _versions(),
         "internet_status": _internet(),
     }
+
+
+NO_GPU = """
+==========================================================================================
+  NO GPU FOUND. This notebook needs one.
+  Kaggle: open the notebook's settings (right panel or the three-dot menu) and set
+  Accelerator = GPU T4 x1, then Save Version -> Save & Run All again.
+  On the CPU the same run takes several times longer (the first Step 3 run took 3.7 h).
+==========================================================================================
+"""
+
+
+def check_gpu(allow_cpu=False):
+    """Stop with a clear message when torch sees no GPU, unless allow_cpu is set (then only warn)."""
+    import torch
+    if torch.cuda.is_available():
+        name = torch.cuda.get_device_name(0)
+        print(f"GPU found: {name}")
+        return name
+    print(NO_GPU)
+    if not allow_cpu:
+        raise RuntimeError("No GPU found. Set Accelerator = GPU T4 and run again "
+                           "(or set ALLOW_CPU = True in the settings cell to run on the CPU anyway).")
+    return None
