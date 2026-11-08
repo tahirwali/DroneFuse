@@ -559,8 +559,8 @@ def latex_more(t3_json, out_dir):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     probes, acc = [], []
-    plan = {"tsms": ("TSMS-Drone", "within", "cross_distance_a_to_b", "cross_distance_b_to_a"),
-            "rfcmm": ("DroneRFc-MM", "within_same_types", "cross_recording_1_to_2", "cross_recording_2_to_1")}
+    plan = {"rfcmm": ("DroneRFc-MM", "within_same_types", "cross_recording_1_to_2", "cross_recording_2_to_1"),
+            "tsms": ("TSMS-Drone", "within", "cross_distance_a_to_b", "cross_distance_b_to_a")}
     for key, (name, w, a, b) in plan.items():
         r = res.get(key)
         if not r:
@@ -581,3 +581,13 @@ def latex_more(t3_json, out_dir):
         acc.append(r"\midrule")
     (out_dir / "tab_more_probes.tex").write_text("\n".join(probes[:-1]) + "\n")
     (out_dir / "tab_more_acc.tex").write_text("\n".join(acc[:-1]) + "\n")
+    r = res.get("rfcmm")
+    if r:      # unknown-type AUROC: known test windows from flights seen in training vs from new flights
+        rows = []
+        for m in sorted(r["probes"]) + ["concat", "late"]:
+            cells = []
+            for prot in ("within_same_types", "cross_recording_1_to_2", "cross_recording_2_to_1"):
+                c = r["accuracy"][prot][m]
+                cells.append(f"{c['auroc_msp']:.1f} [{c['auroc_ci'][0]:.1f}, {c['auroc_ci'][1]:.1f}]")
+            rows.append(f"{SENSOR_NAMES.get(m, m)} & " + " & ".join(cells) + " \\\\")
+        (out_dir / "tab_rfcmm_auroc.tex").write_text("\n".join(rows) + "\n")
