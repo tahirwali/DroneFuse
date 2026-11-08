@@ -82,3 +82,36 @@ def test_tsms_features_reads_packed_tars(tmp_path):
     per = extra.tsms_features([tmp_path], tmp_path / "cache", embed, log=lambda *a: None)
     d = extra.tsms_dataset(per)
     assert d["rows"] == 3 and set(d["x"]) == {"CW", "RF"} and d["x"]["CW"][2, 0] == 80
+
+
+def test_tsms_features_reads_folders_unpacked_by_kaggle(tmp_path):
+    """Kaggle may unpack the .tar files of a dataset into folders (named with or without .tar)."""
+    from PIL import Image
+    for name in ("CW_02m.tar", "RF_02m"):
+        folder = tmp_path / "dronefuse-tsms" / name / "Inspire 2"
+        folder.mkdir(parents=True)
+        for i in range(3):
+            Image.fromarray(np.full((8, 8, 3), i * 40, np.uint8)).save(folder / f"Inspire 2_2m_{i:03d}.png")
+    packs = extra.find_tsms([tmp_path])
+    assert set(packs) == {"CW_02m", "RF_02m"}
+    embed = lambda imgs: np.stack([np.full(768, im.mean(), np.float32) for im in imgs])
+    d = extra.tsms_dataset(extra.tsms_features([tmp_path], tmp_path / "cache", embed, log=lambda *a: None))
+    assert d["rows"] == 3 and set(d["x"]) == {"CW", "RF"} and d["x"]["RF"][1, 0] == 40
+
+
+def test_radar_is_read_from_a_zip_or_an_unpacked_folder(tmp_path):
+    import zipfile
+    pcd = ("FIELDS x y z rgb range azimuth elevation doppler power snr track_id cluster_id ts ts radar_id\n"
+           "DATA ascii\n0 0 0 0 12.5 0.1 0.2 -1.5 30 9 0 0 0 0 0\n")
+    base = tmp_path / "raw_data" / "mmRadar_raw"
+    (base / "g1-2" / "g1-2").mkdir(parents=True)
+    for k in range(2):
+        (base / "g1-2" / "g1-2" / f"{k}_{100 + k}.5.pcd").write_text(pcd)
+    with zipfile.ZipFile(base / "a1.zip", "w") as z:
+        z.writestr("a1/0_200.25.pcd", pcd)
+    assert extra.find_radar(tmp_path, "G1-2").is_dir() and extra.find_radar(tmp_path, "A1").suffix == ".zip"
+    assert extra.find_radar(tmp_path, "B1") is None
+    times, frames = extra.read_radar(extra.find_radar(tmp_path, "G1-2"))
+    assert list(times) == [100.5, 101.5] and frames[0][0, 0] == 12.5 and frames[0][0, 3] == -1.5
+    times, _ = extra.read_radar(extra.find_radar(tmp_path, "A1"))
+    assert list(times) == [200.25]

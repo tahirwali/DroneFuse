@@ -23,6 +23,7 @@ single-sensor probabilities).
 """
 import io
 import json
+import os
 import re
 import tarfile
 import zipfile
@@ -67,31 +68,63 @@ def _png(data):
 
 # ----------------------------------------------------------------------------- TSMS-Drone
 TSMS_NAME = re.compile(r"^(.*)_(\d+)m_(\d+)\.png$")
+TSMS_PACK = re.compile(r"^(FMCW|CW|RF)_\d+m.*")
+
+
+def find_tsms(roots):
+    """{pack name: path} of the TSMS packs under `roots`. A pack is a .tar written by T1 (FMCW_02m_Mavic3.tar,
+    CW_02m.tar, ...) or the folder that Kaggle makes when it unpacks such a .tar in a dataset (with or without
+    the .tar suffix). Packs are named without the .tar suffix, and the first copy found is kept."""
+    packs = {}
+    for root in map(Path, roots):
+        for p in sorted(root.rglob("*")):
+            if not TSMS_PACK.match(p.name):
+                continue
+            name = p.name[:-4] if p.name.endswith(".tar") else p.name
+            if p.is_file() and p.suffix == ".tar" or p.is_dir() and any(p.rglob("*.png")):
+                if not any(str(p).startswith(str(q) + os.sep) for q in packs.values()):
+                    packs.setdefault(name, p)
+    return dict(sorted(packs.items()))
+
+
+def _pack_images(pack):
+    """(file names, RGB images) of every .png in a TSMS pack (.tar or folder)."""
+    names, images = [], []
+    if Path(pack).is_dir():
+        for f in sorted(Path(pack).rglob("*.png")):
+            names.append(f.name)
+            images.append(_png(f.read_bytes()))
+    else:
+        with tarfile.open(pack) as t:
+            for m in t.getmembers():
+                if m.isfile() and m.name.endswith(".png"):
+                    names.append(Path(m.name).name)
+                    images.append(_png(t.extractfile(m).read()))
+    return names, images
 
 
 def tsms_features(tar_dirs, cache_dir, embed, log=print):
-    """{sensor: dict(target, distance, idx, x)} for FMCW, CW and RF, embedding every image of the packed
-    tars once (cached per tar as .npz so a rerun resumes)."""
+    """{sensor: dict(target, distance, idx, x)} for FMCW, CW and RF, embedding every image of the packs
+    once (cached per pack as .npz so a rerun resumes). Packs may be .tar files or unpacked folders."""
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    tars = sorted({p.name: p for d in tar_dirs for p in Path(d).rglob("*.tar")
-                   if p.name.startswith(("FMCW_", "CW_", "RF_"))}.values(), key=lambda p: p.name)
-    log(f"TSMS: {len(tars)} tars")
+    packs = find_tsms(tar_dirs)
+    log(f"TSMS: {len(packs)} packs ({sum(Path(p).is_dir() for p in packs.values())} unpacked by Kaggle)")
+    if not packs:
+        raise ValueError(f"no TSMS packs (FMCW_*, CW_*, RF_*) under {[str(d) for d in tar_dirs]}")
     out = {}
-    for tar in tars:
-        sensor = tar.name.split("_")[0]
-        cache = cache_dir / (tar.stem + ".npz")
+    for name, pack in packs.items():
+        sensor = name.split("_")[0]
+        cache = cache_dir / (name + ".npz")
         if not cache.exists():
-            names, images = [], []
-            with tarfile.open(tar) as t:
-                for m in t.getmembers():
-                    if m.isfile() and m.name.endswith(".png"):
-                        names.append(Path(m.name).name)
-                        images.append(_png(t.extractfile(m).read()))
+            names, images = _pack_images(pack)
+            if not names:
+                log(f"  {name}: no images, skipped")
+                continue
             keys = [TSMS_NAME.match(n).groups() for n in names]
             np.savez(cache, target=np.array([k[0] for k in keys]), distance=np.array([int(k[1]) for k in keys]),
                      idx=np.array([int(k[2]) for k in keys]), x=embed(images).astype(np.float16))
-            log(f"  {tar.name}: {len(names)} images embedded")
+            log(f"  {name}: {len(names)} images embedded")
         z = np.load(cache)
         o = out.setdefault(sensor, {"target": [], "distance": [], "idx": [], "x": []})
         for k in o:
@@ -211,20 +244,42 @@ def audio_features(audio, start, end, n_fft=1024, hop=512, n_mels=64):
 RADAR_COLUMNS = ("range", "azimuth", "elevation", "doppler", "power", "snr")
 
 
+def find_radar(root, sess):
+    """The radar data of one session: mmRadar_raw/<session>.zip, or the folder that Kaggle makes when it
+    unpacks that zip in a dataset (with or without the .zip suffix). None if there is neither."""
+    base = Path(root) / "raw_data" / "mmRadar_raw"
+    for name in (sess.lower(), sess):
+        for p in (base / f"{name}.zip", base / name):
+            if p.is_file() and zipfile.is_zipfile(p) or p.is_dir() and any(p.rglob("*.pcd")):
+                return p
+    return None
+
+
+def _pcd_texts(path):
+    """(file name, text) of every .pcd file in a zip or a folder, in name order."""
+    if Path(path).is_dir():
+        for f in sorted(Path(path).rglob("*.pcd"), key=lambda f: f.name):
+            yield f.name, f.read_bytes().decode("ascii", "replace")
+    else:
+        with zipfile.ZipFile(path) as z:
+            for name in sorted(n for n in z.namelist() if n.endswith(".pcd")):
+                yield name, z.read(name).decode("ascii", "replace")
+
+
 def read_radar(zip_path):
-    """(frame times, list of (n, 6) arrays of range, azimuth, elevation, doppler, power, snr)."""
+    """(frame times, list of (n, 6) arrays of range, azimuth, elevation, doppler, power, snr) from a radar zip
+    or its unpacked folder."""
     times, frames = [], []
-    with zipfile.ZipFile(zip_path) as z:
-        for name in sorted(n for n in z.namelist() if n.endswith(".pcd")):
-            text = z.read(name).decode("ascii", "replace").splitlines()
-            fields = next(l for l in text if l.startswith("FIELDS")).split()[1:]
-            start = next(i for i, l in enumerate(text) if l.startswith("DATA")) + 1
-            cols = [fields.index(c) for c in RADAR_COLUMNS]
-            rows = [l.split() for l in text[start:] if l.strip()]
-            arr = np.array([[float(r[c]) for c in cols] for r in rows], np.float32).reshape(-1, len(cols))
-            stamp = Path(name).stem.split("_", 1)[1]
-            times.append(float(stamp))
-            frames.append(arr)
+    for name, text in _pcd_texts(zip_path):
+        text = text.splitlines()
+        fields = next(l for l in text if l.startswith("FIELDS")).split()[1:]
+        start = next(i for i, l in enumerate(text) if l.startswith("DATA")) + 1
+        cols = [fields.index(c) for c in RADAR_COLUMNS]
+        rows = [l.split() for l in text[start:] if l.strip()]
+        arr = np.array([[float(r[c]) for c in cols] for r in rows], np.float32).reshape(-1, len(cols))
+        stamp = Path(name).stem.split("_", 1)[1]
+        times.append(float(stamp))
+        frames.append(arr)
     order = np.argsort(times)
     return np.array(times)[order], [frames[i] for i in order]
 
@@ -300,8 +355,8 @@ def rfcmm_features(root, embed, log=print):
             audio = read_audio(dat)
             for i in mine:
                 feats["audio"][i] = audio_features(audio, segs[i]["start"], segs[i]["end"])
-        rz = root / "raw_data" / "mmRadar_raw" / f"{sess.lower()}.zip"
-        if rz.exists():
+        rz = find_radar(root, sess)
+        if rz is not None:
             radar = read_radar(rz)
             for i in mine:
                 feats["radar"][i] = radar_features(radar, segs[i]["start"], segs[i]["end"])

@@ -23,3 +23,10 @@ TSMS rows: measurements present for all three sensors with the same (target, dis
 
 Checked: 4 offline tests; parsers on real G1 files (audio 179/179 windows, radar 179/179, PTZ 179/179);
 a dry run of the notebook on synthetic TSMS tars.
+
+## Archives unpacked by Kaggle
+
+When a notebook output is saved as a dataset, Kaggle may unpack the `.tar` and `.zip` files in it. T3 therefore
+finds the TSMS packs (`FMCW_*`, `CW_*`, `RF_*`) and the radar data of each DroneRFc-MM session
+(`raw_data/mmRadar_raw/<session>`) both as archives and as unpacked folders. The report starts with what was
+found in the inputs and ends with the error message of any failed step.
