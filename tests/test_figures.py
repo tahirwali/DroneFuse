@@ -168,3 +168,25 @@ def test_find_inputs_locates_each_saved_output(tmp_path):
     assert found["t3_json"].endswith("t3_results.json") and found["t3_cache"].endswith("cache")
     assert found["windows_csv"].endswith("windows.csv") and found["step2"] is None and found["step1"] == {}
     assert any("NOT ATTACHED" in line for line in figures.describe_inputs(found))
+
+
+def test_two_t3_runs_are_merged(tmp_path):
+    """DroneRFc-MM from one T3 run and TSMS-Drone from another: both results and both caches are used."""
+    import json
+    a, b = tmp_path / "t3-old" / "t3", tmp_path / "t3-new" / "t3"
+    (a / "cache").mkdir(parents=True)
+    (b / "cache" / "tsms").mkdir(parents=True)
+    (a / "cache" / "t3_cache_marker.txt").write_text("x")
+    (b / "cache" / "t3_cache_marker.txt").write_text("x")
+    (a / "cache" / "rfcmm_features.pkl").write_bytes(b"x")
+    np.savez(b / "cache" / "tsms" / "RF_02m.npz", x=np.zeros(1))
+    (a / "t3_results.json").write_text(json.dumps({"results": {"rfcmm": {"v": 1}}}))
+    (b / "t3_results.json").write_text(json.dumps({"results": {"tsms": {"v": 2}, "rfcmm": {"v": 3}, "x": None}}))
+    found = figures.find_inputs(tmp_path, ROOT)
+    assert found["t3_cache"].startswith(str(a)) and found["t3_cache_tsms"].startswith(str(b))
+    res, used = figures.load_t3(found)
+    assert set(res) == {"rfcmm", "tsms"} and used == [str(b / "t3_results.json")]   # the larger file has both
+    assert res["rfcmm"]["v"] == 3
+    (b / "t3_results.json").write_text(json.dumps({"results": {"tsms": {"v": 2}}}))  # each run has one dataset
+    res, used = figures.load_t3(figures.find_inputs(tmp_path, ROOT))
+    assert res == {"rfcmm": {"v": 1}, "tsms": {"v": 2}} and len(used) == 2

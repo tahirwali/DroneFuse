@@ -55,7 +55,9 @@ all modules of the package).
 ## Inputs to attach
 `dronefuse-code` (required), `dronefuse-step3-results`, `dronefuse-step2-features`, `dronefuse-step2b-crops`,
 `dronefuse-mmaud-v2b`, the T3 output saved as a dataset (with `t3/cache/`), `dronefuse-rfcmm-core`,
-`dronefuse-tsms`.
+`dronefuse-tsms`. If DroneRFc-MM and TSMS-Drone came from two T3 runs, attach both outputs: every
+`t3_results.json` is read and merged per dataset (`load_t3`), the DroneRFc-MM cache is the one holding
+`rfcmm_features.pkl`, the TSMS cache the one holding `tsms/*.npz`.
 
 ## Verified locally (2026-11-08)
 - 7 tests (`tests/test_figures.py`); 68 pass in total. The refit test also checks that a changed saved value
@@ -64,3 +66,14 @@ all modules of the package).
   and 74.6 % (new flights), as in the paper, and every seed reproduces its saved accuracy.
 - Whole notebook dry run on a fake `/kaggle/input` (real Step 3 runs and TSMS result, synthetic Step 1/2, DroneRFc-MM
   cache and TSMS packs): all 14 figures written, every step succeeded.
+
+## First Kaggle run (2026-11-08)
+- All steps succeeded; 13 of 14 figures written. Every MMAUD accuracy and 95 % interval equals Table `tab:xrec`;
+  every seed reproduces its saved accuracy; the DroneRFc-MM refits equal the saved T3 accuracy and AUROC of all six
+  protocol/method pairs.
+- The attached T3 dataset (`dronefuse-t3-cache`) was an earlier T3 output with DroneRFc-MM only, so TSMS-Drone is
+  missing from `fig_within_vs_cross_more`, `fig_probes` and `fig_loo_auroc`, and `fig_embedding_tsms` was skipped.
+  Fixed by reading several T3 outputs (above); rerun with the later T3 output attached.
+- Probes: the recording probe equals the paper in every row. Three type-probe cells differ by 0.1-0.2 from the
+  paper table (Mid-360 all 62.1 vs 61.9, foreground 52.7 vs 52.8, crop maximum pooling 56.5 vs 56.6); the plain
+  accuracies equal the Step 2 log, so the paper table carries small transcription or library-version differences.

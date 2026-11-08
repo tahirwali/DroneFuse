@@ -139,10 +139,16 @@ def find_inputs(root, code_root=None):
     found["step2b"] = str(crop[0]) if crop else None
     from .step2 import find_recordings
     found["step1"] = {k: str(v) for k, v in find_recordings(root).items()}
+    # T3 may have been run more than once (for example DroneRFc-MM first, TSMS-Drone later), so every
+    # t3_results.json and every T3 cache is found; load_t3 merges the results.
     t3 = sorted(root.rglob("t3_results.json"), key=lambda p: -p.stat().st_size)
+    found["t3_jsons"] = [str(p) for p in t3]
     found["t3_json"] = str(t3[0]) if t3 else None
     caches = sorted({p.parent for p in root.rglob("t3_cache_marker.txt")})
-    found["t3_cache"] = str(caches[0]) if caches else None
+    found["t3_cache"] = next((str(c) for c in caches if (c / "rfcmm_features.pkl").exists()),
+                             str(caches[0]) if caches else None)
+    found["t3_cache_tsms"] = next((str(c) for c in caches if (c / "tsms").is_dir() and any((c / "tsms").glob("*.npz"))),
+                                  None)
     from .extra import find_tsms
     found["tsms_packs"] = {k: str(v) for k, v in find_tsms([root]).items()}
     rf = sorted({p.parent.parent.parent for p in root.rglob("PTZ_meta.yaml")})
@@ -150,10 +156,27 @@ def find_inputs(root, code_root=None):
     return found
 
 
+def load_t3(found):
+    """The T3 results of every attached t3_results.json, merged per dataset (the largest file first; a dataset
+    missing from it is taken from the next file that has it). Returns (results, the files used)."""
+    results, used = {}, []
+    for path in found.get("t3_jsons") or ([found["t3_json"]] if found.get("t3_json") else []):
+        res = json.loads(Path(path).read_text())["results"]
+        new = [k for k in res if k not in results and res[k]]
+        if new:
+            results.update({k: res[k] for k in new})
+            used.append(path)
+    return results, used
+
+
 def describe_inputs(found):
     lines = []
-    for key in ("windows_csv", "step3", "step2", "step2b", "t3_json", "t3_cache", "rfcmm_root"):
+    for key in ("windows_csv", "step3", "step2", "step2b", "t3_cache", "t3_cache_tsms", "rfcmm_root"):
         lines.append(f"{key:12s} {found.get(key) or 'NOT ATTACHED'}")
+    for path in found.get("t3_jsons") or []:
+        lines.append(f"{'t3_json':12s} {path}")
+    if not found.get("t3_jsons"):
+        lines.append(f"{'t3_json':12s} NOT ATTACHED")
     lines.append(f"{'step1':12s} {len(found['step1'])} recordings: {sorted(found['step1']) or 'NOT ATTACHED'}")
     lines.append(f"{'tsms':12s} {len(found['tsms_packs'])} packs")
     return lines
