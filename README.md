@@ -24,6 +24,7 @@ fit in a few hours on a T4.
 | T1 | `t1_tsms_import.ipynb` | Imports the second dataset, TSMS-Drone (FMCW radar, CW radar, RF receiver), straight from figshare into Kaggle and keeps its processed images | CPU |
 | T2 | `t2_dronerfcmm_import.ipynb` | Imports the third dataset, DroneRFc-MM (PTZ and fisheye camera, RF, LiDAR, mmWave radar, microphones), from Science Data Bank into Kaggle in parts of at most 15 GB | CPU |
 | T3 | `t3_extra_datasets.ipynb` | Runs the recording check (probes, within vs cross-session accuracy, unknown-type rejection) on TSMS-Drone and DroneRFc-MM | GPU T4 |
+| F1 | `f1_figures.ipynb` | Draws every figure of the paper (PDF + PNG + CSV of the plotted values, manifest with input checksums) from the saved outputs of Steps 1-3 and T1-T3 | CPU |
 
 The `docs/` folder explains each step in more detail.
 
